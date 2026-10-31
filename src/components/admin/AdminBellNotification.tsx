@@ -66,11 +66,11 @@ export function AdminBellNotification() {
     }
   }
 
-  // Poll for finished BDs every 15 seconds
+  // Poll for finished BDs every 45 seconds
   useEffect(() => {
     fetchNotifications()
 
-    const interval = setInterval(fetchNotifications, 15000)
+    const interval = setInterval(fetchNotifications, 45000)
     return () => clearInterval(interval)
   }, [openedUserIds, isInitialLoad])
 

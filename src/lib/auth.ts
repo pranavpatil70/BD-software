@@ -1,7 +1,8 @@
-import { cookies } from 'next/headers'
+import { cookies, headers } from 'next/headers'
 import prisma from '@/lib/prisma'
-import { redirect } from 'next/navigation'
+import { redirect, forbidden, unauthorized } from 'next/navigation'
 import { env } from '@/lib/env'
+import { ApiError } from '@/lib/api-error'
 
 export async function getSession() {
   const cookieStore = await cookies()
@@ -22,6 +23,12 @@ export async function getSession() {
 export async function requireAuth() {
   const session = await getSession()
   if (!session) {
+    const headerList = await headers()
+    const accept = headerList.get('accept') || ''
+    const isPage = accept.includes('text/html')
+    if (!isPage) {
+      unauthorized()
+    }
     redirect('/login')
   }
   return session
@@ -30,6 +37,12 @@ export async function requireAuth() {
 export async function requireAdmin() {
   const session = await requireAuth()
   if (session.role !== 'ADMIN') {
+    const headerList = await headers()
+    const accept = headerList.get('accept') || ''
+    const isPage = accept.includes('text/html')
+    if (!isPage) {
+      forbidden()
+    }
     redirect('/dashboard')
   }
   return session
@@ -47,7 +60,7 @@ export async function assertOwnsLead(leadId: string, userId: string) {
   const lead = await prisma.lead.findUnique({
     where: { id: leadId }
   })
-  if (!lead) throw new Error('Lead not found')
+  if (!lead) throw new ApiError(404, 'Lead not found')
 
   const user = await prisma.user.findUnique({ 
     where: { id: userId }, 
@@ -55,7 +68,7 @@ export async function assertOwnsLead(leadId: string, userId: string) {
   })
 
   if (user?.role !== 'ADMIN' && lead.assignedToId !== userId) {
-    throw new Error('Forbidden')
+    throw new ApiError(403, 'Forbidden: You do not have access to this lead')
   }
 
   return lead

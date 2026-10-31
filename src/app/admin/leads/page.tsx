@@ -5,7 +5,7 @@ import { LeadsClient } from './LeadsClient'
 export default async function LeadsPage() {
   await requireAdmin()
   
-  const [users, unassignedCount, totalLeadsCount, pendingGroups, totalPendingCount] = await Promise.all([
+  const [users, unassignedCount, totalLeadsCount, pendingGroups, totalPendingCount, initialLeadsRaw] = await Promise.all([
     prisma.user.findMany({
       where: { active: true },
       select: { 
@@ -29,6 +29,22 @@ export default async function LeadsPage() {
     }),
     prisma.lead.count({
       where: { callCount: 0 }
+    }),
+    prisma.lead.findMany({
+      skip: 0,
+      take: 25,
+      include: { 
+        assignedTo: { select: { displayName: true } },
+        calls: { orderBy: { calledAt: 'desc' }, take: 1, select: { calledAt: true, notes: true } },
+        followUps: { where: { completed: false, scheduledAt: { not: null } }, orderBy: { scheduledAt: 'asc' }, take: 1, select: { slot: true, scheduledAt: true } },
+        _count: { 
+          select: { 
+            followUps: { where: { completed: false } },
+            meetings: true 
+          } 
+        }
+      },
+      orderBy: { createdAt: 'desc' }
     })
   ])
 
@@ -44,6 +60,18 @@ export default async function LeadsPage() {
 
   const unassignedPendingCount = pendingMap.get(null) || 0
 
+  const initialRows = initialLeadsRaw.map(r => ({
+    ...r,
+    createdAt: r.createdAt.toISOString(),
+    updatedAt: r.updatedAt.toISOString(),
+    lastCalledAt: r.lastCalledAt?.toISOString() || null,
+    activeFollowUps: r._count.followUps,
+    meetingsCount: r._count.meetings,
+    whatsappSentAt: r.whatsappSentAt?.toISOString() || null,
+    calls: r.calls.map(c => ({ ...c, calledAt: c.calledAt.toISOString() })),
+    followUps: r.followUps.map(f => ({ ...f, scheduledAt: f.scheduledAt ? f.scheduledAt.toISOString() : '' }))
+  }))
+
   return (
     <div className="space-y-6 w-full">
       <LeadsClient 
@@ -52,6 +80,8 @@ export default async function LeadsPage() {
         unassignedPendingCount={unassignedPendingCount}
         totalLeadsCount={totalLeadsCount}
         totalPendingCount={totalPendingCount}
+        initialRows={initialRows as any}
+        initialTotalCount={totalLeadsCount}
       />
     </div>
   )

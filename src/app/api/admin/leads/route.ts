@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { requireAdmin } from '@/lib/auth'
 import { Prisma } from '@prisma/client'
+import { z } from 'zod'
+import { cleanPhoneNumber } from '@/lib/phone'
+import { handleApiError } from '@/lib/api-error'
 
 export async function GET(request: Request) {
   await requireAdmin()
@@ -100,4 +103,85 @@ export async function GET(request: Request) {
   }))
 
   return NextResponse.json({ rows: mappedRows, total, page, pageSize })
+}
+
+const createLeadSchema = z.object({
+  name: z.string().min(1, 'Name is required').trim(),
+  contact: z.string().min(1, 'Contact number is required').trim(),
+  hasWebsite: z.boolean().default(false),
+  assignedToId: z.string().nullable().optional(),
+  firstInterest: z.string().nullable().optional(),
+  status: z.string().default('NEW'),
+})
+
+export async function POST(request: Request) {
+  const session = await requireAdmin()
+  try {
+    const body = await request.json()
+    const data = createLeadSchema.parse(body)
+
+    const phoneRes = cleanPhoneNumber(data.contact)
+    if (!phoneRes.isValid || !phoneRes.cleaned) {
+      return NextResponse.json(
+        { error: phoneRes.reason || 'Invalid phone number format' },
+        { status: 400 }
+      )
+    }
+
+    const canonicalContact = phoneRes.cleaned
+    const nationalContact = phoneRes.national || ''
+
+    // Deduplication check: check canonical, national, and raw
+    const existing = await prisma.lead.findFirst({
+      where: {
+        OR: [
+          { contact: canonicalContact },
+          ...(nationalContact ? [{ contact: nationalContact }] : []),
+          { contact: data.contact }
+        ]
+      },
+      select: { id: true, name: true, contact: true }
+    })
+
+    if (existing) {
+      return NextResponse.json(
+        { error: `A lead with contact ${canonicalContact} already exists (${existing.name})` },
+        { status: 409 }
+      )
+    }
+
+    const lead = await prisma.lead.create({
+      data: {
+        name: data.name,
+        contact: canonicalContact,
+        hasWebsite: data.hasWebsite,
+        assignedToId: data.assignedToId || null,
+        firstInterest: data.firstInterest?.trim() || null,
+        status: data.status || 'NEW',
+        csvName: 'Manual Entry',
+      },
+      include: {
+        assignedTo: { select: { id: true, displayName: true } }
+      }
+    })
+
+    await prisma.activityLog.create({
+      data: {
+        userId: session.id,
+        action: 'LEAD_CREATED',
+        entity: 'LEAD',
+        entityId: lead.id,
+        metadata: JSON.stringify({
+          name: lead.name,
+          contact: lead.contact,
+          assignedToId: lead.assignedToId,
+          source: 'MANUAL_ENTRY'
+        })
+      }
+    })
+
+    return NextResponse.json({ success: true, lead }, { status: 201 })
+  } catch (error) {
+    return handleApiError(error)
+  }
 }

@@ -5,12 +5,15 @@ import { z } from 'zod'
 import { checkRateLimit, rateLimitKey } from '@/lib/rate-limit'
 import { logger } from '@/lib/logger'
 import { ApiError, handleApiError } from '@/lib/api-error'
+import { cleanPhoneNumber } from '@/lib/phone'
 
 const importSchema = z.object({
   rows: z.array(z.object({
     name: z.string().min(1),
     contact: z.string().min(1),
     hasWebsite: z.boolean(),
+    firstInterest: z.string().optional().nullable(),
+    customFields: z.record(z.string(), z.any()).optional().nullable(),
   })).min(1, 'No rows to import'),
   assignedToId: z.string().optional().nullable(),
   csvName: z.string().optional().nullable(),
@@ -29,18 +32,36 @@ export async function POST(request: Request) {
     const data = importSchema.parse(body)
 
     // Query database for any matching contacts from the requested rows
-    const allContacts = data.rows.map(r => r.contact.trim())
+    const dbSearchTerms = new Set<string>()
+    for (const r of data.rows) {
+      const p = cleanPhoneNumber(r.contact)
+      if (p.isValid && p.cleaned && p.national) {
+        dbSearchTerms.add(p.cleaned)
+        dbSearchTerms.add(p.national)
+      }
+      if (r.contact) {
+        dbSearchTerms.add(r.contact.trim())
+      }
+    }
+
     const existingLeads = await prisma.lead.findMany({
       where: {
         contact: {
-          in: allContacts
+          in: Array.from(dbSearchTerms)
         }
       },
       select: {
         contact: true
       }
     })
-    const existingContactsInDb = new Set(existingLeads.map(l => l.contact.trim().toLowerCase()))
+    const existingContactsInDb = new Set<string>()
+    for (const l of existingLeads) {
+      const p = cleanPhoneNumber(l.contact)
+      if (p.isValid && p.cleaned) {
+        existingContactsInDb.add(p.cleaned)
+      }
+      existingContactsInDb.add(l.contact.trim().toLowerCase())
+    }
 
     const seenContacts = new Set<string>()
     const uniqueLeadsData = []
@@ -49,15 +70,23 @@ export async function POST(request: Request) {
       if (r.hasWebsite) {
         continue
       }
-      const normalizedContact = r.contact.trim().toLowerCase()
-      if (existingContactsInDb.has(normalizedContact) || seenContacts.has(normalizedContact)) {
+      const phoneRes = cleanPhoneNumber(r.contact)
+      if (!phoneRes.isValid || !phoneRes.cleaned) {
         continue
       }
-      seenContacts.add(normalizedContact)
+      const canonicalContact = phoneRes.cleaned
+      if (existingContactsInDb.has(canonicalContact) || seenContacts.has(canonicalContact)) {
+        continue
+      }
+      seenContacts.add(canonicalContact)
       uniqueLeadsData.push({
-        name: r.name,
-        contact: r.contact.trim(),
+        name: r.name.trim(),
+        contact: canonicalContact,
         hasWebsite: r.hasWebsite,
+        firstInterest: r.firstInterest?.trim() || null,
+        customFields: r.customFields && Object.keys(r.customFields).length > 0
+          ? JSON.stringify(r.customFields)
+          : null,
         assignedToId: data.assignedToId || null,
         status: 'NEW',
         csvName: data.csvName || null,

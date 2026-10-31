@@ -9,9 +9,21 @@ export default async function DashboardPage() {
   const startOfToday = new Date()
   startOfToday.setHours(0, 0, 0, 0)
 
-  // Fetch stats concurrently
-  const [assignedCount, calledTodayCount, hotCount, convertedCount] = await Promise.all([
-    prisma.lead.count({ where: { assignedToId: session.id } }),
+  const whereInitial = {
+    assignedToId: session.id,
+    callCount: 0
+  }
+
+  // Fetch stats and initial leads concurrently on server
+  const [
+    calledTodayCount,
+    hotCount,
+    convertedCount,
+    initialLeadsRaw,
+    initialTotal,
+    initialPendingCount,
+    initialCalledCount
+  ] = await Promise.all([
     prisma.call.count({ 
       where: { 
         userId: session.id,
@@ -20,7 +32,35 @@ export default async function DashboardPage() {
     }),
     prisma.lead.count({ where: { assignedToId: session.id, status: 'HOT' } }),
     prisma.lead.count({ where: { assignedToId: session.id, status: 'CONVERTED' } }),
+    prisma.lead.findMany({
+      where: whereInitial,
+      orderBy: { createdAt: 'desc' },
+      take: 25,
+      include: {
+        _count: {
+          select: {
+            followUps: { where: { completed: false } },
+            meetings: true
+          }
+        }
+      }
+    }),
+    prisma.lead.count({ where: whereInitial }),
+    prisma.lead.count({ where: { assignedToId: session.id, callCount: 0 } }),
+    prisma.lead.count({ where: { assignedToId: session.id, callCount: { gt: 0 } } })
   ])
+
+  const assignedCount = initialPendingCount + initialCalledCount
+
+  const initialLeads = initialLeadsRaw.map(l => ({
+    ...l,
+    createdAt: l.createdAt.toISOString(),
+    updatedAt: l.updatedAt.toISOString(),
+    lastCalledAt: l.lastCalledAt?.toISOString() || null,
+    activeFollowUps: l._count.followUps,
+    meetingsCount: l._count.meetings,
+    whatsappSentAt: l.whatsappSentAt?.toISOString() || null
+  }))
 
   return (
     <div className="space-y-6 max-w-[1400px] mx-auto">
@@ -47,7 +87,13 @@ export default async function DashboardPage() {
         </Card>
       </div>
 
-      <DashboardClient bdName={session.displayName} />
+      <DashboardClient 
+        bdName={session.displayName} 
+        initialLeads={initialLeads}
+        initialTotal={initialTotal}
+        initialPendingCount={initialPendingCount}
+        initialCalledCount={initialCalledCount}
+      />
     </div>
   )
 }

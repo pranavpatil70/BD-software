@@ -4,6 +4,7 @@ import * as React from 'react'
 import { MessageCircle, Loader2, Check } from 'lucide-react'
 import { Button } from './Button'
 import { toast } from 'sonner'
+import { toWhatsAppUrl } from '@/lib/phone'
 
 interface WhatsAppButtonProps {
   lead: {
@@ -52,12 +53,7 @@ Best regards,
 ${bdName}
 Intellobyte`
 
-      const encodedMessage = encodeURIComponent(template)
-      
-      // Clean phone number (remove spaces, etc.)
-      const cleanNumber = lead.contact.replace(/[^\d+]/g, '')
-
-      const url = `https://wa.me/${cleanNumber}?text=${encodedMessage}`
+      const url = toWhatsAppUrl(lead.contact, template)
       
       // Open WhatsApp
       window.open(url, '_blank')

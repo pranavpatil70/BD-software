@@ -10,13 +10,13 @@ import { toast } from 'sonner'
 interface ExportLeadsDialogProps {
   open: boolean
   onClose: () => void
-  scope: 'user' | 'admin'
+  scope?: 'user' | 'admin'
   currentFilters?: Record<string, string>
 }
 
 const ALL_STATUSES = ['NEW', 'HOT', 'WARM', 'COLD', 'NOT_INTERESTED', 'CONVERTED', 'NOT_RECEIVED']
 
-export function ExportLeadsDialog({ open, onClose, scope, currentFilters }: ExportLeadsDialogProps) {
+export function ExportLeadsDialog({ open, onClose, currentFilters }: ExportLeadsDialogProps) {
   const [selectedStatuses, setSelectedStatuses] = useState<Set<string>>(new Set(['HOT', 'WARM', 'CONVERTED']))
   const [count, setCount] = useState<number | null>(null)
   const [loadingCount, setLoadingCount] = useState(false)
@@ -37,7 +37,7 @@ export function ExportLeadsDialog({ open, onClose, scope, currentFilters }: Expo
         params.set('count', 'true')
         params.delete('page') // count query doesn't need page
 
-        const endpoint = scope === 'admin' ? '/api/admin/leads/export' : '/api/leads/mine/export'
+        const endpoint = '/api/admin/leads/export'
         const res = await fetch(`${endpoint}?${params.toString()}`)
         if (!res.ok) throw new Error('Failed to fetch count')
         const data = await res.json()
@@ -51,7 +51,7 @@ export function ExportLeadsDialog({ open, onClose, scope, currentFilters }: Expo
     }
 
     fetchCount()
-  }, [open, selectedStatuses, scope, currentFilters])
+  }, [open, selectedStatuses, currentFilters])
 
   const toggleStatus = (status: string) => {
     const newSet = new Set(selectedStatuses)
@@ -78,7 +78,7 @@ export function ExportLeadsDialog({ open, onClose, scope, currentFilters }: Expo
       params.set('statuses', Array.from(selectedStatuses).join(','))
       params.delete('page')
 
-      const endpoint = scope === 'admin' ? '/api/admin/leads/export' : '/api/leads/mine/export'
+      const endpoint = '/api/admin/leads/export'
       const exportUrl = `${endpoint}?${params.toString()}`
 
       // Create a temporary link to trigger download
@@ -100,7 +100,7 @@ export function ExportLeadsDialog({ open, onClose, scope, currentFilters }: Expo
   }
 
   const filterSummary = () => {
-    if (scope !== 'admin' || !currentFilters) return null
+    if (!currentFilters) return null
     const entries = Object.entries(currentFilters).filter(([k, v]) => v && v !== 'ALL' && k !== 'page' && k !== 'status')
     if (entries.length === 0) return null
 
@@ -117,9 +117,7 @@ export function ExportLeadsDialog({ open, onClose, scope, currentFilters }: Expo
     <Dialog isOpen={open} onClose={onClose} title="Export Interested Leads">
       <div className="space-y-4">
         <p className="text-sm text-gray-500">
-          {scope === 'user' 
-            ? 'Export your interested leads to CSV for offline follow-up planning.'
-            : 'Export interested leads matching the current filters.'}
+          Export interested leads matching the current filters to CSV.
         </p>
 
         {filterSummary()}

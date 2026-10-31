@@ -10,11 +10,11 @@ import { CallButton } from '@/components/ui/CallButton'
 import { WhatsAppButton } from '@/components/ui/WhatsAppButton'
 import { FollowUpDrawer } from './FollowUpDrawer'
 import { MeetingDrawer } from '@/components/dashboard/MeetingDrawer'
-import { ExportLeadsDialog } from '@/components/leads/ExportLeadsDialog'
 import { useAutoSave } from '@/hooks/useAutoSave'
 import { toast } from 'sonner'
-import { Loader2, Download } from 'lucide-react'
+import { Loader2, Clock } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { LeadTimelineDrawer } from '@/components/leads/LeadTimelineDrawer'
 
 // Basic types for the client table
 interface Lead {
@@ -132,13 +132,26 @@ function InlineStatusEditor({ leadId, initialStatus, onStatusChange }: { leadId:
   )
 }
 
-export function DashboardClient({ bdName = 'Business Development Executive' }: { bdName?: string }) {
-  const [leads, setLeads] = useState<Lead[]>([])
-  const [total, setTotal] = useState(0)
-  const [loading, setLoading] = useState(true)
+export function DashboardClient({ 
+  bdName = 'Business Development Executive',
+  initialLeads,
+  initialTotal,
+  initialPendingCount,
+  initialCalledCount
+}: { 
+  bdName?: string
+  initialLeads?: Lead[]
+  initialTotal?: number
+  initialPendingCount?: number
+  initialCalledCount?: number
+}) {
+  const [leads, setLeads] = useState<Lead[]>(initialLeads || [])
+  const [total, setTotal] = useState(initialTotal || 0)
+  const [loading, setLoading] = useState(!initialLeads)
   const [page, setPage] = useState(1)
-  const [pendingCount, setPendingCount] = useState<number | null>(null)
-  const [calledCount, setCalledCount] = useState<number | null>(null)
+  const [pendingCount, setPendingCount] = useState<number | null>(initialPendingCount ?? null)
+  const [calledCount, setCalledCount] = useState<number | null>(initialCalledCount ?? null)
+  const isInitialMount = React.useRef(true)
   
   // Filters
   const [q, setQ] = useState('')
@@ -149,7 +162,7 @@ export function DashboardClient({ bdName = 'Business Development Executive' }: {
   // Drawer state
   const [drawerLeadId, setDrawerLeadId] = useState<string | null>(null)
   const [meetingDrawerLeadId, setMeetingDrawerLeadId] = useState<string | null>(null)
-  const [exportDialogOpen, setExportDialogOpen] = useState(false)
+  const [timelineLeadId, setTimelineLeadId] = useState<string | null>(null)
 
   const fetchLeads = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
@@ -176,9 +189,12 @@ export function DashboardClient({ bdName = 'Business Development Executive' }: {
   }, [page, q, statusFilter, calledFilter, websiteFilter])
 
   useEffect(() => {
-    // eslint-disable-next-line
+    if (isInitialMount.current) {
+      isInitialMount.current = false
+      if (initialLeads) return
+    }
     fetchLeads()
-  }, [fetchLeads])
+  }, [fetchLeads, initialLeads])
 
   const hasFilters = q || statusFilter !== 'ALL' || websiteFilter !== 'ALL'
   const clearFilters = () => {
@@ -272,13 +288,9 @@ export function DashboardClient({ bdName = 'Business Development Executive' }: {
           <option value="NO">Website: No</option>
         </Select>
         <div className="flex gap-2">
-          {hasFilters ? (
+          {hasFilters && (
             <Button variant="outline" onClick={clearFilters}>Clear filters</Button>
-          ) : <div className="flex-1" />}
-          <Button variant="outline" className="flex items-center whitespace-nowrap px-3" onClick={() => setExportDialogOpen(true)}>
-            <Download className="w-4 h-4 mr-2" />
-            Export CSV
-          </Button>
+          )}
         </div>
       </div>
 
@@ -296,6 +308,7 @@ export function DashboardClient({ bdName = 'Business Development Executive' }: {
               <th className="px-4 py-3 font-medium">Message</th>
               <th className="px-4 py-3 font-medium">Meetings</th>
               <th className="px-4 py-3 font-medium">Follow-ups</th>
+              <th className="px-4 py-3 font-medium">Timeline</th>
               <th className="px-4 py-3 font-medium text-right">Calls</th>
               <th className="px-4 py-3 font-medium text-right">Last Called</th>
             </tr>
@@ -303,14 +316,14 @@ export function DashboardClient({ bdName = 'Business Development Executive' }: {
           <tbody className="divide-y divide-gray-100">
             {loading ? (
               <tr>
-                <td colSpan={11} className="px-4 py-12 text-center text-gray-500">
+                <td colSpan={12} className="px-4 py-12 text-center text-gray-500">
                   <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
                   Loading your leads...
                 </td>
               </tr>
             ) : leads.length === 0 ? (
               <tr>
-                <td colSpan={11} className="px-4 py-12 text-center text-gray-500">
+                <td colSpan={12} className="px-4 py-12 text-center text-gray-500">
                   {hasFilters ? 'No leads match your filters.' : 'No leads assigned yet. Check back soon.'}
                 </td>
               </tr>
@@ -319,7 +332,7 @@ export function DashboardClient({ bdName = 'Business Development Executive' }: {
                 <React.Fragment key={group.csvName}>
                   {/* Sticky Group Header Row */}
                   <tr className="sticky top-[37px] z-10">
-                    <td colSpan={11} className="bg-gray-50/95 backdrop-blur-sm border-y border-gray-200/80 py-2 px-4 text-xs font-semibold uppercase tracking-wider text-gray-600 font-mono text-left">
+                    <td colSpan={12} className="bg-gray-50/95 backdrop-blur-sm border-y border-gray-200/80 py-2 px-4 text-xs font-semibold uppercase tracking-wider text-gray-600 font-mono text-left">
                       📁 {group.csvName}
                     </td>
                   </tr>
@@ -378,6 +391,18 @@ export function DashboardClient({ bdName = 'Business Development Executive' }: {
                           onClick={() => setDrawerLeadId(lead.id)}
                         >
                           Follow-ups ({lead.activeFollowUps}/4)
+                        </Button>
+                      </td>
+                      <td className="px-4 py-2 align-top">
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className="h-8 text-xs whitespace-nowrap flex items-center gap-1.5 text-gray-700 hover:text-black hover:border-gray-400"
+                          onClick={() => setTimelineLeadId(lead.id)}
+                          title="View lead activity timeline"
+                        >
+                          <Clock className="w-3.5 h-3.5 text-gray-500" />
+                          Timeline
                         </Button>
                       </td>
                       <td className="px-4 py-2 align-top text-right text-gray-500 font-mono">
@@ -476,6 +501,15 @@ export function DashboardClient({ bdName = 'Business Development Executive' }: {
                       >
                         Follow-ups ({lead.activeFollowUps}/4)
                       </Button>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="flex-1 min-w-[120px] h-8 text-xs flex items-center justify-center gap-1 text-gray-700 hover:text-black"
+                        onClick={() => setTimelineLeadId(lead.id)}
+                      >
+                        <Clock className="w-3.5 h-3.5 text-gray-500" />
+                        Timeline
+                      </Button>
                     </div>
                     <div className="flex justify-between items-center pt-2 border-t border-gray-50 text-xs text-gray-500">
                       <div>Calls: <span className="font-mono text-gray-700">{lead.callCount}</span></div>
@@ -525,12 +559,14 @@ export function DashboardClient({ bdName = 'Business Development Executive' }: {
         />
       )}
 
-      {/* Export Dialog */}
-      <ExportLeadsDialog 
-        open={exportDialogOpen} 
-        onClose={() => setExportDialogOpen(false)} 
-        scope="user" 
-      />
+      {timelineLeadId && (
+        <LeadTimelineDrawer 
+          leadId={timelineLeadId}
+          leadName={leads.find(l => l.id === timelineLeadId)?.name || 'Lead'}
+          onClose={() => setTimelineLeadId(null)}
+        />
+      )}
+
     </div>
   )
 }

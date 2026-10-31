@@ -6,8 +6,11 @@ import { checkRateLimit, rateLimitKey } from '@/lib/rate-limit'
 import { logger } from '@/lib/logger'
 import { ApiError, handleApiError } from '@/lib/api-error'
 
+import bcrypt from 'bcryptjs'
+
 const loginSchema = z.object({
   username: z.string().min(1, 'Username is required'),
+  password: z.string().min(1, 'Password is required'),
 })
 
 export async function POST(request: Request) {
@@ -19,15 +22,41 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json()
-    const { username } = loginSchema.parse(body)
+    const { username, password } = loginSchema.parse(body)
 
     const user = await prisma.user.findUnique({
       where: { username },
     })
 
     if (!user || !user.active) {
-      logger.warn('user.login.failed', { username })
-      throw new ApiError(401, 'Invalid or inactive user')
+      logger.warn('user.login.failed', { username, reason: 'User not found or inactive' })
+      throw new ApiError(401, 'Invalid username or password')
+    }
+
+    // Verify password if user has passwordHash set
+    if (user.passwordHash) {
+      const isMatch = await bcrypt.compare(password, user.passwordHash)
+      if (!isMatch) {
+        logger.warn('user.login.failed', { username, reason: 'Password mismatch' })
+        throw new ApiError(401, 'Invalid username or password')
+      }
+    }
+
+    // Record login activity (S8 compliance)
+    try {
+      await prisma.activityLog.create({
+        data: {
+          userId: user.id,
+          action: 'LOGIN',
+          entity: 'USER',
+          metadata: JSON.stringify({
+            ip: request.headers.get('x-forwarded-for') || 'local',
+            userAgent: request.headers.get('user-agent') || 'unknown',
+          }),
+        },
+      })
+    } catch (e) {
+      logger.warn('login.activity_log_failed', { error: e })
     }
 
     logger.info('user.login', { userId: user.id, role: user.role })

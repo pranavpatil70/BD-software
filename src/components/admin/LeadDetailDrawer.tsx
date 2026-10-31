@@ -14,6 +14,7 @@ interface LeadDetailData {
     hasWebsite: boolean
     status: string
     firstInterest: string | null
+    customFields?: string | null
     createdAt: string
     updatedAt: string
     assignedTo: { displayName: string } | null
@@ -140,6 +141,29 @@ export function LeadDetailDrawer({
                 <p className="text-sm text-gray-400 italic">Not yet captured</p>
               )}
             </div>
+
+            
+            {/* Custom Fields */}
+            {(() => {
+              let cf = {}
+              if (data.lead.customFields) {
+                try { cf = JSON.parse(data.lead.customFields) } catch {}
+              }
+              if (!cf || Object.keys(cf).length === 0) return null
+              return (
+                <div className="px-6 py-6 border-b border-gray-100">
+                  <h3 className="text-sm font-semibold text-gray-900 mb-3 uppercase tracking-wider">Custom Fields</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {Object.entries(cf).map(([k, v]) => (
+                      <div key={k} className="bg-gray-50 border border-gray-200 rounded-md px-3 py-2 text-sm">
+                        <span className="text-gray-500 font-medium">{k}: </span>
+                        <span className="font-semibold text-gray-900">{String(v)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )
+            })()}
 
             {/* Follow-ups */}
             <div className="px-6 py-6 border-b border-gray-100">

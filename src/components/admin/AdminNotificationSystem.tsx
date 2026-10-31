@@ -44,8 +44,8 @@ export function AdminNotificationSystem() {
     // Initial fetch
     fetchCompletedUsers()
 
-    // Poll every 15 seconds
-    const interval = setInterval(fetchCompletedUsers, 15000)
+    // Poll every 45 seconds
+    const interval = setInterval(fetchCompletedUsers, 45000)
     return () => clearInterval(interval)
   }, [dismissedUserIds])
 

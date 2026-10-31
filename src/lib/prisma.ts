@@ -6,7 +6,7 @@ import { env } from './env' // We will create this in the next task
 const globalForPrisma = globalThis as unknown as { prisma: PrismaClient }
 
 function buildClient(): PrismaClient {
-  if (env.TURSO_DATABASE_URL) {
+  if (env.TURSO_DATABASE_URL && env.TURSO_AUTH_TOKEN) {
     const libsql = createClient({ 
       url: env.TURSO_DATABASE_URL, 
       authToken: env.TURSO_AUTH_TOKEN 

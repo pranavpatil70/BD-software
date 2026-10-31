@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 
 export default function LoginPage() {
   const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const router = useRouter()
@@ -21,7 +22,7 @@ export default function LoginPage() {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username }),
+        body: JSON.stringify({ username, password }),
       })
 
       const data = await res.json()
@@ -62,8 +63,22 @@ export default function LoginPage() {
                 required
               />
             </div>
+            <div className="space-y-2 text-left">
+              <label htmlFor="password" className="text-sm font-medium leading-none">
+                Password
+              </label>
+              <Input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter your password"
+                disabled={loading}
+                required
+              />
+            </div>
             {error && <p className="text-sm text-red-500 text-left">{error}</p>}
-            <Button type="submit" className="w-full" disabled={loading || !username}>
+            <Button type="submit" className="w-full" disabled={loading || !username || !password}>
               {loading ? 'Signing in...' : 'Sign in'}
             </Button>
           </form>

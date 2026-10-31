@@ -12,6 +12,7 @@ model User {
   id          String   @id @default(cuid())
   username    String   @unique
   displayName String
+  passwordHash String?
   role        String   // "ADMIN" | "USER"
   active      Boolean  @default(true)
   createdAt   DateTime @default(now())
@@ -21,6 +22,7 @@ model User {
   avatar      String?
   csvAssignments CsvAssignment[]
   notifications Notification[]
+  meetings    Meeting[]
 }
 
 model Lead {
@@ -31,6 +33,7 @@ model Lead {
   status        String    @default("NEW") // NEW | HOT | WARM | COLD | NOT_INTERESTED | CONVERTED | NOT_RECEIVED
   csvName       String?
   firstInterest String?   // free text — what the lead initially wanted
+  customFields  String?   // JSON string of arbitrary custom attributes (e.g. location, budget)
   callCount     Int       @default(0)
   lastCalledAt  DateTime?
   whatsappSentAt DateTime?
@@ -41,6 +44,12 @@ model Lead {
   calls         Call[]
   followUps     FollowUp[]
   meetings      Meeting[]
+
+  @@index([assignedToId])
+  @@index([status])
+  @@index([callCount])
+  @@index([createdAt])
+  @@index([lastCalledAt])
 }
 
 model Call {
@@ -51,6 +60,10 @@ model Call {
   user      User     @relation(fields: [userId], references: [id])
   calledAt  DateTime @default(now())
   notes     String?
+
+  @@index([userId])
+  @@index([calledAt])
+  @@index([leadId])
 }
 
 model FollowUp {
@@ -63,7 +76,10 @@ model FollowUp {
   completed Boolean   @default(false)
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
+
   @@unique([leadId, slot])
+  @@index([scheduledAt])
+  @@index([completed])
 }
 
 model ActivityLog {
@@ -75,17 +91,26 @@ model ActivityLog {
   entityId  String?
   metadata  String?  // JSON string
   createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([userId])
+  @@index([action])
 }
 
 model Meeting {
   id          String   @id @default(cuid())
   leadId      String
   lead        Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
   type        String   // "ONLINE" | "OFFLINE"
   scheduledAt DateTime?
   note        String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+  @@index([leadId])
 }
 
 model CsvAssignment {

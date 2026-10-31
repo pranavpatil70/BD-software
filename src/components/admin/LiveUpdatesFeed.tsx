@@ -33,7 +33,7 @@ export function LiveUpdatesFeed({ initialLogs }: { initialLogs: EnrichedActivity
     return data.logs as EnrichedActivityLog[]
   }
 
-  const { data: newFetchedLogs } = usePolling(fetcher, 15000)
+  const { data: newFetchedLogs } = usePolling(fetcher, 45000)
 
   useEffect(() => {
     if (newFetchedLogs && newFetchedLogs.length > 0) {

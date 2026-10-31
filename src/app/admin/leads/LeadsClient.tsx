@@ -10,12 +10,14 @@ import { Checkbox } from '@/components/ui/Checkbox'
 import { StatusPill } from '@/components/ui/StatusPill'
 import { Dialog } from '@/components/ui/Dialog'
 import { toast } from 'sonner'
-import { MoreHorizontal, Loader2, Download, User, Users, FileText, ArrowRight, List, LayoutGrid } from 'lucide-react'
+import { MoreHorizontal, Loader2, Download, User, Users, FileText, ArrowRight, List, LayoutGrid, UserPlus, Clock } from 'lucide-react'
 import { LeadDetailDrawer } from '@/components/admin/LeadDetailDrawer'
 import { AdminFollowUpsDrawer } from '@/components/admin/AdminFollowUpsDrawer'
 import { ExportLeadsDialog } from '@/components/leads/ExportLeadsDialog'
+import { AddLeadDialog } from '@/components/admin/AddLeadDialog'
 import { WhatsAppButton } from '@/components/ui/WhatsAppButton'
 import { MeetingDrawer } from '@/components/dashboard/MeetingDrawer'
+import { LeadTimelineDrawer } from '@/components/leads/LeadTimelineDrawer'
 import { cn } from '@/lib/utils'
 
 import { usePolling } from '@/hooks/usePolling'
@@ -75,7 +77,9 @@ export function LeadsClientInner({
   unassignedPendingCount = 0,
   totalLeadsCount = 0,
   totalPendingCount = 0,
-  initialAssigneeFilter = 'ALL' 
+  initialAssigneeFilter = 'ALL',
+  initialRows,
+  initialTotalCount
 }: { 
   users: { id: string, displayName: string, username?: string, pendingLeadsCount?: number, avatar?: string | null, _count?: { leads: number } }[]
   unassignedCount?: number
@@ -83,11 +87,14 @@ export function LeadsClientInner({
   totalLeadsCount?: number
   totalPendingCount?: number
   initialAssigneeFilter?: string
+  initialRows?: Lead[]
+  initialTotalCount?: number
 }) {
   const [data, setData] = useState<{ rows: Lead[], total: number, page: number, pageSize: number }>({
-    rows: [], total: 0, page: 1, pageSize: 25
+    rows: initialRows || [], total: initialTotalCount ?? 0, page: 1, pageSize: 25
   })
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(!initialRows || initialRows.length === 0)
+  const isInitialMount = useRef(true)
   const [changedRowIds, setChangedRowIds] = useState<Set<string>>(new Set())
 
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list')
@@ -194,13 +201,15 @@ export function LeadsClientInner({
   const [selectedLeadIdForDrawer, setSelectedLeadIdForDrawer] = useState<string | null>(null)
   const [selectedFollowUpsLeadId, setSelectedFollowUpsLeadId] = useState<string | null>(null)
   const [meetingDrawerLeadId, setMeetingDrawerLeadId] = useState<string | null>(null)
+  const [timelineLeadId, setTimelineLeadId] = useState<string | null>(null)
   const [bulkAssignOpen, setBulkAssignOpen] = useState(false)
   const [bulkAssignTo, setBulkAssignTo] = useState('')
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [targetDeleteId, setTargetDeleteId] = useState<string | null>(null)
   const [exportDialogOpen, setExportDialogOpen] = useState(false)
+  const [addLeadOpen, setAddLeadOpen] = useState(false)
 
-  const isPaused = !hasAssigneeParam || bulkAssignOpen || deleteConfirmOpen || selectedIds.size > 0 || !!selectedLeadIdForDrawer || !!selectedFollowUpsLeadId || !!meetingDrawerLeadId || exportDialogOpen
+  const isPaused = !hasAssigneeParam || bulkAssignOpen || deleteConfirmOpen || selectedIds.size > 0 || !!selectedLeadIdForDrawer || !!selectedFollowUpsLeadId || !!meetingDrawerLeadId || !!timelineLeadId || exportDialogOpen || addLeadOpen
 
   const fetcher = useCallback(async () => {
     if (!searchParams.has('assignee') && initialAssigneeFilter === 'ALL') {
@@ -222,10 +231,15 @@ export function LeadsClientInner({
   const { data: polledData, refetch: fetchLeads } = usePolling(fetcher, 30000, isPaused)
 
   useEffect(() => {
-    // eslint-disable-next-line
+    if (isInitialMount.current) {
+      isInitialMount.current = false
+      if (initialRows && initialRows.length > 0 && !searchParams.toString()) {
+        return
+      }
+    }
     setLoading(true)
     fetchLeads()
-  }, [searchParams, fetchLeads])
+  }, [searchParams, fetchLeads, initialRows])
 
   useEffect(() => {
     if (polledData) {
@@ -344,31 +358,41 @@ export function LeadsClientInner({
             <p className="text-gray-500 mt-1 text-sm sm:text-base">Select a Business Development executive or segment to manage active leads.</p>
           </div>
           
-          <div className="flex items-center justify-center border border-gray-200 rounded-lg p-0.5 bg-gray-50 self-center sm:self-auto shadow-sm">
-            <button
-              onClick={() => setAndSaveViewMode('list')}
-              className={`flex items-center gap-1.5 py-1.5 px-3 text-xs font-semibold rounded-md transition-all cursor-pointer ${
-                viewMode === 'list' 
-                  ? 'bg-black text-white shadow-sm' 
-                  : 'text-gray-500 hover:text-black'
-              }`}
-              title="List View"
+          <div className="flex items-center gap-3 self-center sm:self-auto">
+            <Button
+              onClick={() => setAddLeadOpen(true)}
+              className="flex items-center gap-2 bg-black text-white hover:bg-gray-800 text-xs h-8 px-3 shadow-sm"
             >
-              <List className="w-3.5 h-3.5" />
-              <span>List View</span>
-            </button>
-            <button
-              onClick={() => setAndSaveViewMode('grid')}
-              className={`flex items-center gap-1.5 py-1.5 px-3 text-xs font-semibold rounded-md transition-all cursor-pointer ${
-                viewMode === 'grid' 
-                  ? 'bg-black text-white shadow-sm' 
-                  : 'text-gray-500 hover:text-black'
-              }`}
-              title="Compact Grid View"
-            >
-              <LayoutGrid className="w-3.5 h-3.5" />
-              <span>Compact Tiles</span>
-            </button>
+              <UserPlus className="w-3.5 h-3.5" />
+              <span>Add Single Lead</span>
+            </Button>
+
+            <div className="flex items-center justify-center border border-gray-200 rounded-lg p-0.5 bg-gray-50 shadow-sm">
+              <button
+                onClick={() => setAndSaveViewMode('list')}
+                className={`flex items-center gap-1.5 py-1.5 px-3 text-xs font-semibold rounded-md transition-all cursor-pointer ${
+                  viewMode === 'list' 
+                    ? 'bg-black text-white shadow-sm' 
+                    : 'text-gray-500 hover:text-black'
+                }`}
+                title="List View"
+              >
+                <List className="w-3.5 h-3.5" />
+                <span>List View</span>
+              </button>
+              <button
+                onClick={() => setAndSaveViewMode('grid')}
+                className={`flex items-center gap-1.5 py-1.5 px-3 text-xs font-semibold rounded-md transition-all cursor-pointer ${
+                  viewMode === 'grid' 
+                    ? 'bg-black text-white shadow-sm' 
+                    : 'text-gray-500 hover:text-black'
+                }`}
+                title="Compact Grid View"
+              >
+                <LayoutGrid className="w-3.5 h-3.5" />
+                <span>Compact Tiles</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -575,6 +599,16 @@ export function LeadsClientInner({
             ))}
           </div>
         )}
+
+        <AddLeadDialog
+          open={addLeadOpen}
+          onClose={() => setAddLeadOpen(false)}
+          users={users}
+          defaultAssigneeId={null}
+          onLeadCreated={() => {
+            router.refresh()
+          }}
+        />
       </div>
     )
   }
@@ -617,8 +651,18 @@ export function LeadsClientInner({
           </p>
         </div>
         
-        {/* Called / Pending tabs */}
-        <div className="flex border border-gray-200 rounded-lg p-0.5 bg-gray-50 mt-4 md:mt-0">
+        {/* Actions & Tabs */}
+        <div className="flex items-center gap-3 mt-4 md:mt-0">
+          <Button
+            onClick={() => setAddLeadOpen(true)}
+            className="flex items-center gap-2 bg-black text-white hover:bg-gray-800 text-xs h-8 px-3 shadow-sm"
+          >
+            <UserPlus className="w-3.5 h-3.5" />
+            <span>Add Single Lead</span>
+          </Button>
+
+          {/* Called / Pending tabs */}
+          <div className="flex border border-gray-200 rounded-lg p-0.5 bg-gray-50">
           <button
             onClick={() => setParam('called', 'NOT_CALLED')}
             className={`py-1.5 px-4 text-xs font-semibold rounded-md transition-all cursor-pointer ${
@@ -641,6 +685,7 @@ export function LeadsClientInner({
           </button>
         </div>
       </div>
+    </div>
 
       {/* Filters grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-4">
@@ -724,6 +769,7 @@ export function LeadsClientInner({
               <th className="px-4 py-3 font-medium">Message</th>
               <th className="px-4 py-3 font-medium">Meetings</th>
               <th className="px-4 py-3 font-medium">Follow-ups</th>
+              <th className="px-4 py-3 font-medium">Timeline</th>
               <th className="px-4 py-3 font-medium text-right">Calls</th>
               <th className="px-4 py-3 font-medium text-right">Last Called</th>
               <th className="px-4 py-3 font-medium">Assigned To</th>
@@ -733,14 +779,14 @@ export function LeadsClientInner({
           <tbody className="divide-y divide-gray-100">
             {loading ? (
               <tr>
-                <td colSpan={13} className="px-4 py-12 text-center text-gray-500">
+                <td colSpan={14} className="px-4 py-12 text-center text-gray-500">
                   <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
                   Loading...
                 </td>
               </tr>
             ) : data.rows.length === 0 ? (
               <tr>
-                <td colSpan={13} className="px-4 py-12 text-center text-gray-500">
+                <td colSpan={14} className="px-4 py-12 text-center text-gray-500">
                   No leads found.
                 </td>
               </tr>
@@ -749,7 +795,7 @@ export function LeadsClientInner({
                 <React.Fragment key={group.csvName}>
                   {/* Sticky Group Header Row */}
                   <tr className="sticky top-[37px] z-10">
-                    <td colSpan={13} className="bg-gray-50/95 backdrop-blur-sm border-y border-gray-200/80 py-2 px-4 text-xs font-semibold uppercase tracking-wider text-gray-600 font-mono text-left">
+                    <td colSpan={14} className="bg-gray-50/95 backdrop-blur-sm border-y border-gray-200/80 py-2 px-4 text-xs font-semibold uppercase tracking-wider text-gray-600 font-mono text-left">
                       📁 {group.csvName}
                     </td>
                   </tr>
@@ -817,6 +863,18 @@ export function LeadsClientInner({
                             Follow-ups ({row.activeFollowUps || 0}/4)
                           </Button>
                         </td>
+                        <td className="px-4 py-2 align-top">
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="h-8 text-xs whitespace-nowrap flex items-center gap-1.5 text-gray-700 hover:text-black hover:border-gray-400"
+                            onClick={() => setTimelineLeadId(row.id)}
+                            title="View lead activity timeline"
+                          >
+                            <Clock className="w-3.5 h-3.5 text-gray-500" />
+                            Timeline
+                          </Button>
+                        </td>
                         <td className="px-4 py-2 align-top text-right text-gray-500 font-mono">
                           {row.callCount}
                         </td>
@@ -838,7 +896,14 @@ export function LeadsClientInner({
                             <button className="p-1 text-gray-400 hover:text-black rounded">
                               <MoreHorizontal className="w-4 h-4" />
                             </button>
-                            <div className="absolute right-0 top-full mt-1 hidden group-hover/menu:block bg-white border border-gray-200 shadow-lg rounded-md z-10 min-w-[120px] py-1">
+                            <div className="absolute right-0 top-full mt-1 hidden group-hover/menu:block bg-white border border-gray-200 shadow-lg rounded-md z-10 min-w-[140px] py-1">
+                              <button 
+                                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                                onClick={() => setTimelineLeadId(row.id)}
+                              >
+                                <Clock className="w-3.5 h-3.5 text-gray-500" />
+                                View Timeline
+                              </button>
                               <button 
                                 className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
                                 onClick={() => {
@@ -917,7 +982,14 @@ export function LeadsClientInner({
                         <button className="p-1 text-gray-400 hover:text-black rounded">
                           <MoreHorizontal className="w-4 h-4" />
                         </button>
-                        <div className="absolute right-0 top-full mt-1 hidden group-hover/menu:block bg-white border border-gray-200 shadow-lg rounded-md z-10 min-w-[120px] py-1">
+                        <div className="absolute right-0 top-full mt-1 hidden group-hover/menu:block bg-white border border-gray-200 shadow-lg rounded-md z-10 min-w-[140px] py-1">
+                          <button 
+                            className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                            onClick={() => setTimelineLeadId(row.id)}
+                          >
+                            <Clock className="w-3.5 h-3.5 text-gray-500" />
+                            View Timeline
+                          </button>
                           <button 
                             className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
                             onClick={() => {
@@ -993,6 +1065,15 @@ export function LeadsClientInner({
                           onClick={() => setSelectedFollowUpsLeadId(row.id)}
                         >
                           Follow-ups ({row.activeFollowUps || 0}/4)
+                        </Button>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className="flex-1 min-w-[120px] h-8 text-xs flex items-center justify-center gap-1 text-gray-700 hover:text-black"
+                          onClick={() => setTimelineLeadId(row.id)}
+                        >
+                          <Clock className="w-3.5 h-3.5 text-gray-500" />
+                          Timeline
                         </Button>
                       </div>
                       <div className="flex justify-between items-center pt-2 border-t border-gray-50 text-xs text-gray-500">
@@ -1080,12 +1161,32 @@ export function LeadsClientInner({
         />
       )}
 
+      {timelineLeadId && (
+        <LeadTimelineDrawer 
+          leadId={timelineLeadId}
+          leadName={data.rows.find(l => l.id === timelineLeadId)?.name || 'Lead'}
+          onClose={() => setTimelineLeadId(null)}
+        />
+      )}
+
       {/* Export Dialog */}
       <ExportLeadsDialog 
         open={exportDialogOpen} 
         onClose={() => setExportDialogOpen(false)} 
         scope="admin"
         currentFilters={Object.fromEntries(searchParams.entries())}
+      />
+
+      {/* Add Single Lead Dialog */}
+      <AddLeadDialog 
+        open={addLeadOpen} 
+        onClose={() => setAddLeadOpen(false)} 
+        users={users}
+        defaultAssigneeId={assigneeFilter}
+        onLeadCreated={() => {
+          fetchLeads()
+          router.refresh()
+        }}
       />
     </div>
   )
